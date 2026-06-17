@@ -1,3 +1,11 @@
+import urllib.request
+try:
+    urllib.request.urlopen('https://api.brightdata.com', timeout=5)
+    print("✅ Сеть работает", flush=True)
+except Exception as e:
+    print(f"❌ Сеть не работает: {e}", flush=True)
+
+
 import asyncio
 import aiohttp
 import re
