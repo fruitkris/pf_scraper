@@ -9,7 +9,7 @@ SCRAPER_API_KEY = "349dca9f82b8f518fb41e0209841f426"
 SEARCH_URL = os.environ.get("SEARCH_URL", "https://www.propertyfinder.ae/en/search?l=634&c=1&fu=0&ob=mr")
 
 def scraper_url(target_url):
-    return f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={target_url}&render=true"
+    return f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={target_url}&render=true&country_code=ae"
 
 async def fetch(session, url):
     async with session.get(scraper_url(url), timeout=aiohttp.ClientTimeout(total=60)) as resp:
