@@ -1,40 +1,42 @@
 import asyncio
-from playwright.async_api import async_playwright
-import csv
+import aiohttp
 import re
+import csv
 import os
+from bs4 import BeautifulSoup
 
-# URL задаётся через переменную окружения в Railway
+SCRAPER_API_KEY = "349dca9f82b8f518fb41e0209841f426"
 SEARCH_URL = os.environ.get("SEARCH_URL", "https://www.propertyfinder.ae/en/search?l=634&c=1&fu=0&ob=mr")
 
-async def scrape_listings(search_url: str):
+def scraper_url(target_url):
+    return f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={target_url}&render=true"
+
+async def fetch(session, url):
+    async with session.get(scraper_url(url), timeout=aiohttp.ClientTimeout(total=60)) as resp:
+        return await resp.text()
+
+async def scrape_listings(search_url):
     results = []
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-        )
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = await context.new_page()
+    async with aiohttp.ClientSession() as session:
         page_num = 1
 
         while True:
             url = search_url + f"&page={page_num}"
-            print(f"\n📄 Страница {page_num}: {url}", flush=True)
+            print(f"\n📄 Страница {page_num}", flush=True)
 
-            await page.goto(url, wait_until="networkidle", timeout=30000)
-            await asyncio.sleep(2)
+            html = await fetch(session, url)
+            soup = BeautifulSoup(html, "html.parser")
 
-            links = await page.eval_on_selector_all(
-                'a[href*="/en/plp/"]',
-                "els => [...new Set(els.map(el => el.href))]"
-            )
+            # Ссылки на листинги
+            links = list(dict.fromkeys([
+                "https://www.propertyfinder.ae" + a["href"]
+                for a in soup.select('a[href*="/en/plp/"]')
+                if a.get("href")
+            ]))
 
             if not links:
-                print("✅ Листинги закончились.", flush=True)
+                print("✅ Страницы закончились.", flush=True)
                 break
 
             print(f"   Найдено {len(links)} листингов", flush=True)
@@ -42,78 +44,65 @@ async def scrape_listings(search_url: str):
             for i, link in enumerate(links):
                 print(f"  [{i+1}/{len(links)}] {link}", flush=True)
                 try:
-                    await page.goto(link, wait_until="networkidle", timeout=30000)
-                    await asyncio.sleep(1.5)
+                    html = await fetch(session, link)
+                    soup = BeautifulSoup(html, "html.parser")
 
                     # Заголовок
                     title = ""
-                    try:
-                        title = await page.locator("h1").first.inner_text(timeout=5000)
-                    except:
-                        pass
+                    h1 = soup.find("h1")
+                    if h1:
+                        title = h1.get_text(strip=True)
 
                     # Цена
                     price = ""
-                    try:
-                        price = await page.locator('[data-testid="price"]').first.inner_text(timeout=5000)
-                    except:
-                        try:
-                            price = await page.locator('span:has-text("AED")').first.inner_text(timeout=3000)
-                        except:
-                            pass
+                    for el in soup.find_all(string=re.compile(r"AED")):
+                        price = el.strip()
+                        break
 
-                    # DLD Permit
-                    permit = ""
-                    try:
-                        content = await page.content()
-                        match = re.search(r'Permit[^0-9]*(\d{7,})', content)
-                        if match:
-                            permit = match.group(1)
-                    except:
-                        pass
+                    # Reference и DLD Permit — ищем в тексте страницы
+                    text = soup.get_text()
 
-                    # Reference
                     reference = ""
-                    try:
-                        content = await page.content()
-                        match = re.search(r'Reference[^0-9]*(\d{5,})', content)
-                        if match:
-                            reference = match.group(1)
-                    except:
-                        pass
+                    ref_match = re.search(r'Reference\s*[\n\r]*\s*(\d{8,})', text)
+                    if ref_match:
+                        reference = ref_match.group(1)
+
+                    permit = ""
+                    permit_match = re.search(r'DLD Permit Number\s*[\n\r]*\s*(\d{7,})', text)
+                    if permit_match:
+                        permit = permit_match.group(1)
 
                     results.append({
                         "url": link,
-                        "title": title.strip(),
-                        "price": price.strip(),
-                        "permit": permit.strip(),
-                        "reference": reference.strip(),
+                        "title": title,
+                        "price": price,
+                        "reference": reference,
+                        "permit": permit,
                     })
 
-                    print(f"     ✓ {title[:40]} | {price} | Permit: {permit} | Ref: {reference}", flush=True)
+                    print(f"     ✓ {title[:40]} | {price} | Ref: {reference} | Permit: {permit}", flush=True)
 
                 except Exception as e:
                     print(f"     ✗ Ошибка: {e}", flush=True)
                     results.append({"url": link, "error": str(e)})
 
+                await asyncio.sleep(1)
+
             page_num += 1
             await asyncio.sleep(2)
 
-        await browser.close()
-
-    # Выводим итог в логи
+    # Итог в логи
     print("\n========== РЕЗУЛЬТАТЫ ==========", flush=True)
     for r in results:
         print(f"🏠 {r.get('title','')[:40]}", flush=True)
         print(f"   💰 {r.get('price','')}", flush=True)
-        print(f"   🔑 Permit: {r.get('permit','')}", flush=True)
         print(f"   📋 Ref: {r.get('reference','')}", flush=True)
+        print(f"   🔑 Permit: {r.get('permit','')}", flush=True)
         print(f"   🔗 {r.get('url','')}", flush=True)
         print(flush=True)
 
     print(f"✅ Всего: {len(results)} листингов", flush=True)
     return results
-
 
 if __name__ == "__main__":
     print(f"🚀 Запуск. URL: {SEARCH_URL}", flush=True)
