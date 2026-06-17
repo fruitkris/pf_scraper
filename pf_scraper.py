@@ -16,10 +16,8 @@ async def fetch(session, url):
     payload = {
     "zone": "scraping_browser",
     "url": url,
-    "format": "raw",
-    "method": "api"
+    "format": "raw"
 }
-
     async with session.post(
         "https://api.brightdata.com/request",
         headers=headers,
