@@ -1,27 +1,39 @@
 import asyncio
+import aiohttp
 import re
 import os
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
 
-USERNAME = "brd-customer-hl_2311d537-zone-scraping_browser"
-PASSWORD = "a2tnpm1d8j9u"
-WS_URL = f"wss://{USERNAME}:{PASSWORD}@brd.superproxy.io:9222"
+BD_API_KEY = "2577d2d3-25f9-46f6-9d4d-98a56b172178"
+ZONE = "scraping_browser"
 SEARCH_URL = os.environ.get("SEARCH_URL", "https://www.propertyfinder.ae/en/search?l=634&c=1&fu=0&ob=mr")
 
+async def fetch(session, url):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {BD_API_KEY}"
+    }
+    payload = {
+        "zone": ZONE,
+        "url": url,
+        "format": "raw"
+    }
+    async with session.post(
+        "https://api.brightdata.com/request",
+        headers=headers,
+        json=payload,
+        timeout=aiohttp.ClientTimeout(total=120)
+    ) as resp:
+        print(f"Status: {resp.status}", flush=True)
+        return await resp.text()
+
 async def scrape():
-    async with async_playwright() as pw:
-        print("🔌 Подключаемся к Bright Data браузеру...", flush=True)
-        browser = await pw.chromium.connect_over_cdp(WS_URL)
-        page = await browser.new_page()
-
+    async with aiohttp.ClientSession() as session:
         url = SEARCH_URL + "&page=1"
-        print(f"📄 Открываем: {url}", flush=True)
-        await page.goto(url, timeout=60000)
-        await page.wait_for_load_state("networkidle")
-
-        html = await page.content()
+        print(f"📄 Запрос: {url}", flush=True)
+        html = await fetch(session, url)
         print(f"HTML длина: {len(html)}", flush=True)
+        print(f"Фрагмент: {html[:500]}", flush=True)
 
         soup = BeautifulSoup(html, "html.parser")
         links = list(dict.fromkeys([
@@ -32,17 +44,12 @@ async def scrape():
         print(f"Найдено ссылок: {len(links)}", flush=True)
 
         if not links:
-            print("❌ Ссылки не найдены", flush=True)
-            await browser.close()
+            print("❌ Ссылок не найдено", flush=True)
             return
 
-        # Только первый листинг
         link = links[0]
         print(f"🔗 {link}", flush=True)
-        await page.goto(link, timeout=60000)
-        await page.wait_for_load_state("networkidle")
-
-        html = await page.content()
+        html = await fetch(session, link)
         soup = BeautifulSoup(html, "html.parser")
         title = soup.find("h1").get_text(strip=True) if soup.find("h1") else ""
         price = ""
@@ -62,8 +69,6 @@ async def scrape():
         print(f"🔑 Permit: {permit}", flush=True)
         print(f"🔗 {link}", flush=True)
 
-        await browser.close()
-
 if __name__ == "__main__":
-    print("🚀 Тест — 1 листинг через Bright Data Browser", flush=True)
+    print("🚀 Тест — 1 листинг", flush=True)
     asyncio.run(scrape())
