@@ -2,12 +2,19 @@ import asyncio
 from playwright.async_api import async_playwright
 import csv
 import re
+import os
+
+# URL задаётся через переменную окружения в Railway
+SEARCH_URL = os.environ.get("SEARCH_URL", "https://www.propertyfinder.ae/en/search?l=634&c=1&fu=0&ob=mr")
 
 async def scrape_listings(search_url: str):
     results = []
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+        )
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
         )
@@ -16,24 +23,24 @@ async def scrape_listings(search_url: str):
 
         while True:
             url = search_url + f"&page={page_num}"
-            print(f"\n📄 Страница {page_num}: {url}")
+            print(f"\n📄 Страница {page_num}: {url}", flush=True)
+
             await page.goto(url, wait_until="networkidle", timeout=30000)
             await asyncio.sleep(2)
 
-            # Собираем ссылки на листинги
             links = await page.eval_on_selector_all(
                 'a[href*="/en/plp/"]',
                 "els => [...new Set(els.map(el => el.href))]"
             )
 
             if not links:
-                print("✅ Листинги закончились.")
+                print("✅ Листинги закончились.", flush=True)
                 break
 
-            print(f"   Найдено {len(links)} листингов")
+            print(f"   Найдено {len(links)} листингов", flush=True)
 
             for i, link in enumerate(links):
-                print(f"  [{i+1}/{len(links)}] {link}")
+                print(f"  [{i+1}/{len(links)}] {link}", flush=True)
                 try:
                     await page.goto(link, wait_until="networkidle", timeout=30000)
                     await asyncio.sleep(1.5)
@@ -55,7 +62,7 @@ async def scrape_listings(search_url: str):
                         except:
                             pass
 
-                    # DLD Permit Number
+                    # DLD Permit
                     permit = ""
                     try:
                         content = await page.content()
@@ -65,7 +72,7 @@ async def scrape_listings(search_url: str):
                     except:
                         pass
 
-                    # Reference number
+                    # Reference
                     reference = ""
                     try:
                         content = await page.content()
@@ -83,10 +90,10 @@ async def scrape_listings(search_url: str):
                         "reference": reference.strip(),
                     })
 
-                    print(f"     ✓ {title[:40]} | {price} | Permit: {permit} | Ref: {reference}")
+                    print(f"     ✓ {title[:40]} | {price} | Permit: {permit} | Ref: {reference}", flush=True)
 
                 except Exception as e:
-                    print(f"     ✗ Ошибка: {e}")
+                    print(f"     ✗ Ошибка: {e}", flush=True)
                     results.append({"url": link, "error": str(e)})
 
             page_num += 1
@@ -94,18 +101,20 @@ async def scrape_listings(search_url: str):
 
         await browser.close()
 
-    # Сохраняем CSV
-    if results:
-        with open("listings.csv", "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=["url", "title", "price", "permit", "reference"])
-            writer.writeheader()
-            for r in results:
-                writer.writerow({k: r.get(k, "") for k in ["url", "title", "price", "permit", "reference"]})
-        print(f"\n✅ Сохранено {len(results)} листингов → listings.csv")
+    # Выводим итог в логи
+    print("\n========== РЕЗУЛЬТАТЫ ==========", flush=True)
+    for r in results:
+        print(f"🏠 {r.get('title','')[:40]}", flush=True)
+        print(f"   💰 {r.get('price','')}", flush=True)
+        print(f"   🔑 Permit: {r.get('permit','')}", flush=True)
+        print(f"   📋 Ref: {r.get('reference','')}", flush=True)
+        print(f"   🔗 {r.get('url','')}", flush=True)
+        print(flush=True)
 
+    print(f"✅ Всего: {len(results)} листингов", flush=True)
     return results
 
 
 if __name__ == "__main__":
-    url = input("Вставь ссылку на поиск PF: ").strip()
-    asyncio.run(scrape_listings(url))
+    print(f"🚀 Запуск. URL: {SEARCH_URL}", flush=True)
+    asyncio.run(scrape_listings(SEARCH_URL))
