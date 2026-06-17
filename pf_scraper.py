@@ -4,7 +4,7 @@ import re
 import os
 from bs4 import BeautifulSoup
 
-BD_API_KEY = "2577d2d3-25f9-46f6-9d4d-98a56b172178"
+BD_API_KEY = os.environ.get("BD_API_KEY", "2577d2d3-25f9-46f6-9d4d-98a56b172178")
 ZONE = "scraping_browser"
 SEARCH_URL = os.environ.get("SEARCH_URL", "https://www.propertyfinder.ae/en/search?l=634&c=1&fu=0&ob=mr")
 
