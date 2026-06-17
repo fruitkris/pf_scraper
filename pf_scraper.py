@@ -17,8 +17,7 @@ async def fetch(session, url):
     "zone": ZONE,
     "url": url,
     "format": "raw",
-    "render": True,
-    "wait_for_selector": "a[href*='/en/plp/']"
+    "render": True
 }
     async with session.post(
         "https://api.brightdata.com/request",
