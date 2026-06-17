@@ -25,15 +25,24 @@ async def scrape_listings(search_url):
             url = search_url + f"&page={page_num}"
             print(f"\n📄 Страница {page_num}", flush=True)
 
-            html = await fetch(session, url)
-            soup = BeautifulSoup(html, "html.parser")
+           html = await fetch(session, url)
+print(f"HTML длина: {len(html)}", flush=True)
+print(f"Фрагмент: {html[200:600]}", flush=True)
 
-            # Ссылки на листинги
-            links = list(dict.fromkeys([
-                "https://www.propertyfinder.ae" + a["href"]
-                for a in soup.select('a[href*="/en/plp/"]')
-                if a.get("href")
-            ]))
+soup = BeautifulSoup(html, "html.parser")
+
+# Пробуем разные селекторы
+links_plp = soup.select('a[href*="/en/plp/"]')
+links_buy = soup.select('a[href*="/buy/"]')
+print(f"Ссылки /plp/: {len(links_plp)}", flush=True)
+print(f"Ссылки /buy/: {len(links_buy)}", flush=True)
+
+links = list(dict.fromkeys([
+    "https://www.propertyfinder.ae" + a["href"]
+    for a in links_plp
+    if a.get("href")
+]))
+
 
             if not links:
                 print("✅ Страницы закончились.", flush=True)
