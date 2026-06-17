@@ -14,11 +14,12 @@ async def fetch(session, url):
         "Authorization": f"Bearer {BD_API_KEY}"
     }
     payload = {
-    "zone": ZONE,
+    "zone": "scraping_browser",
     "url": url,
     "format": "raw",
-    "render": True
+    "method": "api"
 }
+
     async with session.post(
         "https://api.brightdata.com/request",
         headers=headers,
